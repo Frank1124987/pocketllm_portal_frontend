@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-function ChatInterface({ user, sessionManager, apiService }) {
+function ChatInterface({ user, sessionManager, apiService, isGuest, onShowLogin }) {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
@@ -24,12 +24,13 @@ function ChatInterface({ user, sessionManager, apiService }) {
 
   const loadSessions = () => {
     const loadedSessions = sessionManager.getAllSessions();
-    setSessions(loadedSessions);
-    console.log("load sessions is being called");
     if (loadedSessions.length > 0 && !currentSessionId) {
+      setSessions(loadedSessions);
       const firstSession = loadedSessions[0];
       setCurrentSessionId(firstSession.sessionId);
       loadSessionMessages(firstSession.sessionId);
+    }else{
+      handleNewSession();
     }
   };
 
@@ -227,6 +228,41 @@ function ChatInterface({ user, sessionManager, apiService }) {
 
   return (
     <div className="chat-container">
+      {/* Guest Mode Warning */}
+      {isGuest && (
+        <div style={{
+          padding: '1rem',
+          backgroundColor: '#fff3cd',
+          borderBottom: '1px solid #ffc107',
+          color: '#856404',
+          fontSize: '0.9rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem',
+          justifyContent: 'center'
+        }}>
+          <span>⚠️</span>
+          <span>
+            <strong>Guest Mode:</strong> Your chat history is stored locally and will be lost when you close this tab.
+          </span>
+          <button
+            onClick={onShowLogin}
+            style={{
+              padding: '0.4rem 0.8rem',
+              backgroundColor: '#667eea',
+              color: 'white',
+              border: 'none',
+              borderRadius: '5px',
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+              fontWeight: '500',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            Sign In to Save
+          </button>
+        </div>
+      )}
       <div className="chat-layout">
         {/* Sidebar */}
         <div className="chat-sidebar">

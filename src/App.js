@@ -4,18 +4,23 @@ import ChatInterface from './components/ChatInterface';
 import AdminConsole from './components/AdminConsole';
 import DeveloperAPI from './components/DeveloperAPI';
 import Navigation from './components/Navigation';
+import Login from './components/Login';
 import { SessionManager } from './services/SessionManager';
 import { APIService } from './services/APIService';
+import AuthService from './services/AuthService';
 
 function App() {
   const [currentView, setCurrentView] = useState('chat'); // 'chat', 'admin', 'api'
   const [user, setUser] = useState(null);
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isGuest, setIsGuest] = useState(true); // Default to guest mode
+  const [showLoginModal, setShowLoginModal] = useState(false);
   
   // Initialize services once
   const [apiService] = useState(() => new APIService());
   const [sessionManager] = useState(() => new SessionManager(apiService));
+  const [authService] = useState(() => new AuthService());
 
   useEffect(() => {
     // Initialize app on mount
@@ -24,102 +29,194 @@ function App() {
 
   const initializeApp = async () => {
     try {
-      // TODO: Check for existing Firebase auth token
-      // For now, simulate guest user
-      const userId = "temp-userId-01";
-      const guestUser = { 
-        userId, 
-        username: 'Guest User',
-        email: 'guest@example.com'
-      };
+      setLoading(true);
       
-      setUser(guestUser);
+      // Check if there's a persisted Firebase auth session
+      const firebaseUser = await authService.initialize();
       
-      // Initialize session manager (loads sessions from backend if authenticated)
-      try {
-        await sessionManager.initialize(userId);
-      } catch (error) {
-        console.log('Session initialization failed (expected without auth):', error);
+      if (firebaseUser) {
+        // User is already signed in with Firebase
+        const idToken = await authService.getIdToken();
+        
+        // Login to backend
+        try {
+          const loginResult = await apiService.login(idToken);
+          
+          setUser({
+            userId: firebaseUser.uid,
+            username: firebaseUser.displayName || firebaseUser.email,
+            email: firebaseUser.email,
+            photoURL: firebaseUser.photoURL
+          });
+          
+          // Initialize session manager with authenticated user
+          await sessionManager.initialize(firebaseUser.uid, false);
+          
+          setAuthenticated(true);
+          setIsGuest(false);
+        } catch (error) {
+          console.error('Backend login failed:', error);
+          // Sign out from Firebase if backend login fails and fall back to guest
+          await authService.signOut();
+          await initializeGuestMode();
+        }
+      } else {
+        // No Firebase session - start as guest
+        await initializeGuestMode();
       }
-      
-      setAuthenticated(true);
     } catch (error) {
       console.error('App initialization error:', error);
+      // Fall back to guest mode on any error
+      await initializeGuestMode();
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLogin = async (loginResult) => {
-    try {
-      // loginResult should contain: {user, sessions, stats}
-      setUser({
-        userId: loginResult.user.uid,
-        username: loginResult.user.name || loginResult.user.email,
-        email: loginResult.user.email
+  const initializeGuestMode = async () => {
+    // Generate or retrieve guest user
+    let guestUser = localStorage.getItem('guestUser');
+    
+    if (!guestUser) {
+      // Create new guest user
+      const guestId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      guestUser = JSON.stringify({
+        uid: guestId,
+        email: 'guest@pocketllm.local',
+        displayName: 'Guest User',
+        photoURL: null,
+        isGuest: true
       });
+      localStorage.setItem('guestUser', guestUser);
+    }
+    
+    const parsedGuest = JSON.parse(guestUser);
+    setUser(parsedGuest);
+    
+    // Initialize session manager in guest mode
+    await sessionManager.initialize(parsedGuest.uid, true);
+    
+    setAuthenticated(true);
+    setIsGuest(true);
+  };
+
+  const handleLoginSuccess = async (loginResult) => {
+    try {
+      setLoading(true);
       
-      // Set token in API service
-      apiService.setIdToken(loginResult.idToken);
+      const { user: authUser, idToken } = loginResult;
+      const isGuestUser = authUser.isGuest || !idToken;
       
-      // Initialize sessions from login result
-      if (loginResult.sessions) {
-        sessionManager.sessions.clear();
-        loginResult.sessions.forEach(session => {
-          sessionManager.sessions.set(session.sessionId, session);
-        });
+      if (!isGuestUser) {
+        // Authenticated user - login to backend
+        try {
+          await apiService.login(idToken);
+          
+          setUser({
+            userId: authUser.uid,
+            username: authUser.displayName || authUser.email,
+            email: authUser.email,
+            photoURL: authUser.photoURL || null
+          });
+          
+          // Initialize session manager with backend sessions
+          await sessionManager.initialize(authUser.uid, false);
+          
+          setIsGuest(false);
+          setAuthenticated(true);
+          setShowLoginModal(false); // Close the login modal
+        } catch (error) {
+          console.error('Backend login failed:', error);
+          alert('Failed to connect to backend. Please try again.');
+          await authService.signOut();
+        }
       }
-      
-      setAuthenticated(true);
     } catch (error) {
       console.error('Login error:', error);
+      alert('Login failed. Please try again.');
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleShowLogin = () => {
+    setShowLoginModal(true);
+  };
+
+  const handleCloseLogin = () => {
+    setShowLoginModal(false);
   };
 
   const handleLogout = async () => {
     try {
-      // Call logout API
-      await apiService.logout();
+      setLoading(true);
+      
+      if (!isGuest) {
+        // Sign out from Firebase and backend for authenticated users
+        await apiService.logout();
+        await authService.signOut();
+        
+        // Switch to guest mode after logout
+        await initializeGuestMode();
+      } else {
+        // Already in guest mode, just clear and reinitialize
+        localStorage.removeItem('guestUser');
+        localStorage.removeItem('guestSessions');
+        await initializeGuestMode();
+      }
       
       // Clear session manager cache
       sessionManager.clearCache();
       
-      // Reset state
-      setAuthenticated(false);
-      setUser(null);
       setCurrentView('chat');
     } catch (error) {
       console.error('Logout error:', error);
+    } finally {
+      setLoading(false);
     }
   };
+
+  // Auto-refresh ID token periodically for authenticated users
+  useEffect(() => {
+    if (!authenticated || isGuest) return;
+    
+    // Refresh token every 50 minutes (tokens expire after 1 hour)
+    const refreshInterval = setInterval(async () => {
+      try {
+        const newToken = await authService.refreshIdToken();
+        if (newToken) {
+          apiService.setIdToken(newToken);
+        }
+      } catch (error) {
+        console.error('Token refresh failed:', error);
+      }
+    }, 50 * 60 * 1000);
+    
+    return () => clearInterval(refreshInterval);
+  }, [authenticated, isGuest, authService, apiService]);
 
   if (loading) {
     return (
       <div className="App auth-container">
         <div className="login-box">
-          <h1>PocketLLM Portal</h1>
-          <p>Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!authenticated) {
-    return (
-      <div className="App auth-container">
-        <div className="login-box">
-          <h1>PocketLLM Portal</h1>
-          <p>Lightweight LLM Chat Interface</p>
-          <button 
-            className="btn-primary"
-            onClick={() => setAuthenticated(true)}
-          >
-            Enter as Guest
-          </button>
-          <p style={{marginTop: '1rem', fontSize: '0.9rem', color: '#666'}}>
-            Note: Guest mode uses simulated sessions. 
-            For persistent chat history, implement Firebase Authentication.
-          </p>
+          <h1>🤖 PocketLLM Portal</h1>
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'center', 
+            gap: '1rem',
+            padding: '2rem'
+          }}>
+            <div className="spinner" style={{
+              width: '40px',
+              height: '40px',
+              border: '4px solid #f3f3f3',
+              borderTop: '4px solid #4285f4',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite'
+            }}></div>
+            <p>Loading...</p>
+          </div>
         </div>
       </div>
     );
@@ -132,6 +229,8 @@ function App() {
         onViewChange={setCurrentView}
         user={user}
         onLogout={handleLogout}
+        isGuest={isGuest}
+        onShowLogin={handleShowLogin}
       />
       
       <main className="main-content">
@@ -140,6 +239,8 @@ function App() {
             user={user}
             sessionManager={sessionManager}
             apiService={apiService}
+            isGuest={isGuest}
+            onShowLogin={handleShowLogin}
           />
         )}
         {currentView === 'admin' && (
@@ -155,6 +256,46 @@ function App() {
           />
         )}
       </main>
+
+      {/* Login Modal */}
+      {showLoginModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={handleCloseLogin}
+              style={{
+                position: 'absolute',
+                top: '1rem',
+                right: '1rem',
+                background: 'transparent',
+                border: 'none',
+                fontSize: '1.5rem',
+                cursor: 'pointer',
+                color: '#999',
+                zIndex: 1001
+              }}
+            >
+              ×
+            </button>
+            <Login 
+              authService={authService}
+              onLoginSuccess={handleLoginSuccess}
+              isModal={true}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

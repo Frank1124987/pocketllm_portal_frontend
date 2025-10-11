@@ -1,27 +1,37 @@
 /**
  * SessionManager - Client-side session manager that communicates with backend
- * All operations now go through the backend API to sync with Firebase
+ * Handles both authenticated users (Firebase) and guest users (localStorage)
  */
 export class SessionManager {
   constructor(apiService) {
     this.apiService = apiService;
     this.sessions = new Map(); // Local cache for quick access
     this.currentSessionId = null;
+    this.isGuestMode = false;
   }
 
   /**
-   * Initialize - Load all sessions from backend on startup
+   * Initialize - Load all sessions from backend (authenticated) or localStorage (guest)
    */
-  async initialize(userId) {
+  async initialize(userId, isGuest = false) {
+    this.isGuestMode = isGuest;
+    
     try {
-      const sessions = await this.apiService.getUserSessions(userId);
-      // Populate local cache
-      this.sessions.clear();
-      sessions.forEach(session => {
-        this.sessions.set(session.sessionId, session);
-      });
-      
-      return sessions;
+      if (isGuest) {
+        // Load guest sessions from localStorage
+        return this._loadGuestSessions();
+      } else {
+        // Load authenticated user sessions from backend
+        const sessions = await this.apiService.getUserSessions(userId);
+        
+        // Populate local cache
+        this.sessions.clear();
+        sessions.forEach(session => {
+          this.sessions.set(session.sessionId, session);
+        });
+        
+        return sessions;
+      }
     } catch (error) {
       console.error('Failed to initialize sessions:', error);
       return [];
@@ -29,17 +39,69 @@ export class SessionManager {
   }
 
   /**
-   * Create a new session - calls backend API
+   * Load guest sessions from localStorage
+   * @private
+   */
+  _loadGuestSessions() {
+    try {
+      const stored = localStorage.getItem('guestSessions');
+      if (stored) {
+        const sessions = JSON.parse(stored);
+        this.sessions.clear();
+        sessions.forEach(session => {
+          this.sessions.set(session.sessionId, session);
+        });
+        return sessions;
+      }
+    } catch (error) {
+      console.error('Failed to load guest sessions:', error);
+    }
+    return [];
+  }
+
+  /**
+   * Save guest sessions to localStorage
+   * @private
+   */
+  _saveGuestSessions() {
+    if (!this.isGuestMode) return;
+    
+    try {
+      const sessions = Array.from(this.sessions.values());
+      localStorage.setItem('guestSessions', JSON.stringify(sessions));
+    } catch (error) {
+      console.error('Failed to save guest sessions:', error);
+    }
+  }
+
+  /**
+   * Create a new session - calls backend API for authenticated users or localStorage for guests
    */
   async createSession(userId) {
     try {
-      this.sessions.clear();
-      const session = await this.apiService.createSession(userId);
-      
-      // Add to local cache
-      this.sessions.set(session.sessionId, session);
-      console.log(this.sessions)
-      return session;
+      if (this.isGuestMode) {
+        // Create guest session locally
+        const session = {
+          sessionId: `guest_session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          userId: userId,
+          messages: [],
+          createdAt: new Date().toISOString(),
+          lastAccessedAt: new Date().toISOString()
+        };
+        
+        this.sessions.set(session.sessionId, session);
+        this._saveGuestSessions();
+        
+        return session;
+      } else {
+        // Create session via backend
+        const session = await this.apiService.createSession(userId);
+        
+        // Add to local cache
+        this.sessions.set(session.sessionId, session);
+        
+        return session;
+      }
     } catch (error) {
       console.error('Failed to create session:', error);
       throw error;
@@ -48,7 +110,7 @@ export class SessionManager {
 
   /**
    * Get a specific session by ID
-   * First checks local cache, then fetches from backend if not found
+   * First checks local cache, then fetches from backend if not found (authenticated only)
    */
   async getSession(sessionId) {
     // Check local cache first
@@ -56,7 +118,12 @@ export class SessionManager {
       return this.sessions.get(sessionId);
     }
     
-    // Not in cache, fetch from backend
+    // For guest mode, only use cache
+    if (this.isGuestMode) {
+      return null;
+    }
+    
+    // Not in cache, fetch from backend (authenticated users only)
     try {
       const session = await this.apiService.getSession(sessionId);
       
@@ -80,11 +147,16 @@ export class SessionManager {
   }
 
   /**
-   * Refresh all sessions from backend
+   * Refresh all sessions from backend (authenticated users only)
    */
-  async refreshSessions() {
+  async refreshSessions(userId) {
+    if (this.isGuestMode) {
+      // For guest mode, just return current sessions
+      return this.getAllSessions();
+    }
+    
     try {
-      const sessions = await this.apiService.getUserSessions();
+      const sessions = await this.apiService.getUserSessions(userId);
       
       // Update local cache
       this.sessions.clear();
@@ -101,8 +173,8 @@ export class SessionManager {
 
   /**
    * Add a message to a session locally
-   * Note: Messages are automatically saved to backend by APIService.sendInferenceRequest
-   * This just updates the local cache
+   * For authenticated users: messages are saved to backend by APIService.sendInferenceRequest
+   * For guest users: messages are saved to localStorage
    */
   addMessageLocally(sessionId, message) {
     const session = this.sessions.get(sessionId);
@@ -110,23 +182,34 @@ export class SessionManager {
       if (!session.messages) {
         session.messages = [];
       }
-      session.messages.push(message);
+      // Create new array to avoid mutation
+      session.messages = [...session.messages, message];
       session.lastAccessedAt = new Date().toISOString();
+      
+      // Save to localStorage for guest users
+      if (this.isGuestMode) {
+        this._saveGuestSessions();
+      }
     }
   }
 
   /**
    * Get all messages in a session
-   * First checks local cache, then fetches from backend if needed
+   * First checks local cache, then fetches from backend if needed (authenticated only)
    */
   async getMessages(userId, sessionId) {
     const session = this.sessions.get(sessionId);
     if (session && session.messages) {
-      console.log(sessionId, session);
-      return session.messages;
+      // Return a copy to prevent mutation issues
+      return [...session.messages];
     }
     
-    // Fetch from backend if not in cache
+    // For guest mode, only use cache
+    if (this.isGuestMode) {
+      return [];
+    }
+    
+    // Fetch from backend if not in cache (authenticated users only)
     try {
       const messages = await this.apiService.getSessionMessages(userId, sessionId);
       
@@ -135,7 +218,7 @@ export class SessionManager {
         session.messages = messages;
       }
       
-      return messages;
+      return [...messages]; // Return a copy
     } catch (error) {
       console.error('Failed to get messages:', error);
       return [];
@@ -143,20 +226,34 @@ export class SessionManager {
   }
 
   /**
-   * Clear all messages in a session - calls backend API
+   * Clear all messages in a session
+   * For authenticated users: calls backend API
+   * For guest users: updates localStorage
    */
   async clearHistory(sessionId) {
     try {
-      await this.apiService.clearSessionHistory(sessionId);
-      
-      // Update local cache
-      const session = this.sessions.get(sessionId);
-      if (session) {
-        session.messages = [];
-        session.lastAccessedAt = new Date().toISOString();
+      if (this.isGuestMode) {
+        // Clear messages in guest session
+        const session = this.sessions.get(sessionId);
+        if (session) {
+          session.messages = [];
+          session.lastAccessedAt = new Date().toISOString();
+          this._saveGuestSessions();
+        }
+        return true;
+      } else {
+        // Call backend API for authenticated users
+        await this.apiService.clearSessionHistory(sessionId);
+        
+        // Update local cache
+        const session = this.sessions.get(sessionId);
+        if (session) {
+          session.messages = [];
+          session.lastAccessedAt = new Date().toISOString();
+        }
+        
+        return true;
       }
-      
-      return true;
     } catch (error) {
       console.error('Failed to clear history:', error);
       return false;
@@ -164,16 +261,26 @@ export class SessionManager {
   }
 
   /**
-   * Delete a session - calls backend API
+   * Delete a session
+   * For authenticated users: calls backend API
+   * For guest users: updates localStorage
    */
   async deleteSession(userId, sessionId) {
     try {
-      await this.apiService.deleteSession(userId, sessionId);
-      
-      // Remove from local cache
-      this.sessions.delete(sessionId);
-      
-      return true;
+      if (this.isGuestMode) {
+        // Delete from guest sessions
+        this.sessions.delete(sessionId);
+        this._saveGuestSessions();
+        return true;
+      } else {
+        // Call backend API for authenticated users
+        await this.apiService.deleteSession(userId, sessionId);
+        
+        // Remove from local cache
+        this.sessions.delete(sessionId);
+        
+        return true;
+      }
     } catch (error) {
       console.error('Failed to delete session:', error);
       return false;
@@ -190,7 +297,8 @@ export class SessionManager {
     return {
       totalSessions: sessions.length,
       totalMessages: totalMessages,
-      avgMessagesPerSession: sessions.length > 0 ? (totalMessages / sessions.length).toFixed(2) : 0
+      avgMessagesPerSession: sessions.length > 0 ? (totalMessages / sessions.length).toFixed(2) : 0,
+      isGuestMode: this.isGuestMode
     };
   }
 
@@ -214,5 +322,17 @@ export class SessionManager {
   clearCache() {
     this.sessions.clear();
     this.currentSessionId = null;
+    
+    // Clear guest sessions from localStorage
+    if (this.isGuestMode) {
+      localStorage.removeItem('guestSessions');
+    }
+  }
+
+  /**
+   * Check if in guest mode
+   */
+  isGuest() {
+    return this.isGuestMode;
   }
 }
