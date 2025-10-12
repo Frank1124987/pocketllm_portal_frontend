@@ -25,6 +25,7 @@ function AdminConsole({ apiService, sessionManager }) {
       }, 5000);
       return () => clearInterval(interval);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRefresh]);
 
   const updateMetrics = () => {

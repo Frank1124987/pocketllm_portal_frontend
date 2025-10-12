@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 import ChatInterface from './components/ChatInterface';
 import AdminConsole from './components/AdminConsole';
@@ -22,12 +22,34 @@ function App() {
   const [sessionManager] = useState(() => new SessionManager(apiService));
   const [authService] = useState(() => new AuthService());
 
-  useEffect(() => {
-    // Initialize app on mount
-    initializeApp();
-  }, []);
+  const initializeGuestMode = useCallback(async () => {
+    // Generate or retrieve guest user
+    let guestUser = localStorage.getItem('guestUser');
+    
+    if (!guestUser) {
+      // Create new guest user
+      const guestId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      guestUser = JSON.stringify({
+        uid: guestId,
+        email: 'guest@pocketllm.local',
+        displayName: 'Guest User',
+        photoURL: null,
+        isGuest: true
+      });
+      localStorage.setItem('guestUser', guestUser);
+    }
+    
+    const parsedGuest = JSON.parse(guestUser);
+    setUser(parsedGuest);
+    
+    // Initialize session manager in guest mode
+    await sessionManager.initialize(parsedGuest.uid, true);
+    
+    setAuthenticated(true);
+    setIsGuest(true);
+  }, [sessionManager]);
 
-  const initializeApp = async () => {
+  const initializeApp = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -40,7 +62,7 @@ function App() {
         
         // Login to backend
         try {
-          const loginResult = await apiService.login(idToken);
+          await apiService.login(idToken);
           
           setUser({
             userId: firebaseUser.uid,
@@ -71,34 +93,12 @@ function App() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [authService, apiService, sessionManager, initializeGuestMode]);
 
-  const initializeGuestMode = async () => {
-    // Generate or retrieve guest user
-    let guestUser = localStorage.getItem('guestUser');
-    
-    if (!guestUser) {
-      // Create new guest user
-      const guestId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      guestUser = JSON.stringify({
-        uid: guestId,
-        email: 'guest@pocketllm.local',
-        displayName: 'Guest User',
-        photoURL: null,
-        isGuest: true
-      });
-      localStorage.setItem('guestUser', guestUser);
-    }
-    
-    const parsedGuest = JSON.parse(guestUser);
-    setUser(parsedGuest);
-    
-    // Initialize session manager in guest mode
-    await sessionManager.initialize(parsedGuest.uid, true);
-    
-    setAuthenticated(true);
-    setIsGuest(true);
-  };
+  useEffect(() => {
+    // Initialize app on mount
+    initializeApp();
+  }, [initializeApp]);
 
   const handleLoginSuccess = async (loginResult) => {
     try {

@@ -12,6 +12,7 @@ function ChatInterface({ user, sessionManager, apiService, isGuest, onShowLogin 
   useEffect(() => {
     // Load initial sessions
     loadSessions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionManager]);
 
   useEffect(() => {

@@ -1,11 +1,8 @@
 [build]
-  command = "npm run build"
+  command = "CI=false npm run build"
   publish = "build"
 
-# Redirect all routes to index.html for React Router
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
-
-# Environment variables (you'll add these in Netlify dashboard)
