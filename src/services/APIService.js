@@ -4,7 +4,24 @@
  */
 export class APIService {
   constructor() {
-    this.baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api/v1';
+    this.baseURL = process.env.REACT_APP_API_URL;
+    
+    // Log environment for debugging
+    console.log('Environment variables check:');
+    console.log('- REACT_APP_API_URL:', process.env.REACT_APP_API_URL);
+    console.log('- All REACT_APP vars:', Object.keys(process.env).filter(key => key.startsWith('REACT_APP_')));
+    
+    if (!this.baseURL) {
+      console.error('❌ REACT_APP_API_URL is not set!');
+      console.error('Please set REACT_APP_API_URL in your environment variables.');
+      console.error('For Netlify: Site settings → Environment variables');
+      // Don't throw error, set a default for development
+      this.baseURL = 'http://localhost:5001/api/v1';
+      console.warn('⚠️ Using fallback URL:', this.baseURL);
+    } else {
+      console.log('✅ API Service initialized with URL:', this.baseURL);
+    }
+    
     this.idToken = null; // Firebase ID token
     this.cache = new Map();
     this.telemetry = {
