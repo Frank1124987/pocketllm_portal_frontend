@@ -9,19 +9,35 @@ function AdminConsole({ apiService, sessionManager }) {
     averageLatency: 1200
   });
 
+  const [cacheStats, setCacheStats] = useState({
+    entries: 0,
+    max_size: 1000,
+    hits: 0,
+    misses: 0,
+    hit_rate: '0%',
+    sets: 0,
+    deletes: 0,
+    evictions: 0,
+    expirations: 0
+  });
+
   const [cacheTTL, setCacheTTL] = useState(3600);
-  const [cacheMaxSize, setCacheMaxSize] = useState(500);
-  const [modelName, setModelName] = useState('tinyllama-1.1b');
+  const [cacheMaxSize, setCacheMaxSize] = useState(1000);
+  const [modelName, setModelName] = useState('deepseek-r1:1.5b');
   const [logs, setLogs] = useState([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     updateMetrics();
+    loadCacheStats();
+    loadCacheConfig();
     loadLogs();
 
     if (autoRefresh) {
       const interval = setInterval(() => {
         updateMetrics();
+        loadCacheStats();
       }, 5000);
       return () => clearInterval(interval);
     }
@@ -29,7 +45,6 @@ function AdminConsole({ apiService, sessionManager }) {
   }, [autoRefresh]);
 
   const updateMetrics = () => {
-    // Simulate real-time metrics from backend
     const sessions = sessionManager.getAllSessions();
     const activeSessions = sessions.length;
     
@@ -37,55 +52,110 @@ function AdminConsole({ apiService, sessionManager }) {
       cpuUsage: Math.random() * 80,
       memoryUsage: 40 + Math.random() * 40,
       activeSessions: activeSessions,
-      cacheHitRate: Math.random() * 100,
+      cacheHitRate: parseFloat(cacheStats.hit_rate) || 0,
       averageLatency: 800 + Math.random() * 800
     });
+  };
 
-    // Add log entry
-    const newLog = {
-      timestamp: new Date().toLocaleTimeString(),
-      level: 'INFO',
-      message: `Metrics updated - Active sessions: ${activeSessions}`
-    };
-    setLogs(prev => [newLog, ...prev].slice(0, 100));
+  const loadCacheStats = async () => {
+    try {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/cache/stats`);
+      if (response.ok) {
+        const stats = await response.json();
+        setCacheStats(stats);
+      }
+    } catch (error) {
+      console.error('Failed to load cache stats:', error);
+    }
+  };
+
+  const loadCacheConfig = async () => {
+    try {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/cache/config`);
+      if (response.ok) {
+        const config = await response.json();
+        setCacheTTL(config.default_ttl);
+        setCacheMaxSize(config.max_size);
+      }
+    } catch (error) {
+      console.error('Failed to load cache config:', error);
+    }
   };
 
   const loadLogs = () => {
-    // Simulate loading system logs
     const systemLogs = [
-      { timestamp: '12:34:56', level: 'INFO', message: 'System initialized' },
-      { timestamp: '12:35:10', level: 'INFO', message: 'Model loaded successfully' },
-      { timestamp: '12:35:45', level: 'DEBUG', message: 'Cache initialized with TTL=3600' },
-      { timestamp: '12:36:20', level: 'INFO', message: 'API server started on port 5000' },
-      { timestamp: '12:37:05', level: 'INFO', message: 'First user connected' }
+      { timestamp: new Date().toLocaleTimeString(), level: 'INFO', message: 'System initialized' },
+      { timestamp: new Date().toLocaleTimeString(), level: 'INFO', message: 'Model loaded successfully' },
+      { timestamp: new Date().toLocaleTimeString(), level: 'DEBUG', message: `Cache initialized with TTL=${cacheTTL}` },
+      { timestamp: new Date().toLocaleTimeString(), level: 'INFO', message: 'API server connected' }
     ];
     setLogs(systemLogs);
   };
 
-  const handleSaveCacheConfig = () => {
-    apiService.updateCacheConfig({ ttl: cacheTTL, maxSize: cacheMaxSize });
-    setLogs(prev => [{
+  const addLog = (level, message) => {
+    const newLog = {
       timestamp: new Date().toLocaleTimeString(),
-      level: 'INFO',
-      message: `Cache configuration updated - TTL: ${cacheTTL}s, MaxSize: ${cacheMaxSize}MB`
-    }, ...prev].slice(0, 100));
+      level,
+      message
+    };
+    setLogs(prev => [newLog, ...prev].slice(0, 100));
+  };
+
+  const handleSaveCacheConfig = async () => {
+    setSaving(true);
+    
+    try {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/cache/config`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          ttl: cacheTTL,
+          maxSize: cacheMaxSize
+        })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        addLog('INFO', `✓ ${result.message}`);
+        addLog('INFO', `Cache TTL: ${cacheTTL}s, Max Size: ${cacheMaxSize} entries`);
+        
+        // Reload config to confirm
+        await loadCacheConfig();
+      } else {
+        const error = await response.json();
+        addLog('ERROR', `Failed to update cache config: ${error.message || error.error}`);
+      }
+    } catch (error) {
+      addLog('ERROR', `Cache config update error: ${error.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleClearCache = async () => {
+    try {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/cache/clear`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        addLog('INFO', '✓ Cache cleared successfully');
+        await loadCacheStats();
+      } else {
+        addLog('ERROR', 'Failed to clear cache');
+      }
+    } catch (error) {
+      addLog('ERROR', `Cache clear error: ${error.message}`);
+    }
   };
 
   const handleReloadModel = () => {
-    setLogs(prev => [{
-      timestamp: new Date().toLocaleTimeString(),
-      level: 'INFO',
-      message: `Model reloading: ${modelName}`
-    }, ...prev].slice(0, 100));
-  };
-
-  const handleClearCache = () => {
-    apiService.clearCache();
-    setLogs(prev => [{
-      timestamp: new Date().toLocaleTimeString(),
-      level: 'INFO',
-      message: 'Cache cleared'
-    }, ...prev].slice(0, 100));
+    addLog('INFO', `Model reload requested: ${modelName}`);
   };
 
   return (
@@ -100,36 +170,36 @@ function AdminConsole({ apiService, sessionManager }) {
         </button>
       </div>
 
-      {/* Metrics Section */}
+      {/* Cache Statistics */}
       <div className="admin-section">
-        <h2 className="section-title">📊 System Metrics</h2>
+        <h2 className="section-title">💾 Cache Statistics</h2>
         <div className="metrics-grid">
           <div className="metric-card">
-            <div className="metric-label">CPU Usage</div>
-            <div className="metric-value">{metrics.cpuUsage.toFixed(1)}<span className="metric-unit">%</span></div>
+            <div className="metric-label">Cache Entries</div>
+            <div className="metric-value">{cacheStats.entries}<span className="metric-unit">/ {cacheStats.max_size}</span></div>
           </div>
           <div className="metric-card">
-            <div className="metric-label">Memory Usage</div>
-            <div className="metric-value">{metrics.memoryUsage.toFixed(1)}<span className="metric-unit">%</span></div>
+            <div className="metric-label">Cache Hits</div>
+            <div className="metric-value" style={{color: '#4caf50'}}>{cacheStats.hits}</div>
           </div>
           <div className="metric-card">
-            <div className="metric-label">Active Sessions</div>
-            <div className="metric-value">{metrics.activeSessions}</div>
+            <div className="metric-label">Cache Misses</div>
+            <div className="metric-value" style={{color: '#ff9800'}}>{cacheStats.misses}</div>
           </div>
           <div className="metric-card">
-            <div className="metric-label">Cache Hit Rate</div>
-            <div className="metric-value">{metrics.cacheHitRate.toFixed(1)}<span className="metric-unit">%</span></div>
+            <div className="metric-label">Evictions</div>
+            <div className="metric-value" style={{color: '#f44336'}}>{cacheStats.evictions}</div>
           </div>
           <div className="metric-card">
-            <div className="metric-label">Avg Latency</div>
-            <div className="metric-value">{metrics.averageLatency.toFixed(0)}<span className="metric-unit">ms</span></div>
+            <div className="metric-label">Total Operations</div>
+            <div className="metric-value">{cacheStats.sets + cacheStats.deletes}</div>
           </div>
         </div>
       </div>
 
       {/* Cache Configuration */}
       <div className="admin-section">
-        <h2 className="section-title">💾 Cache Configuration</h2>
+        <h2 className="section-title">⚙️ Cache Configuration</h2>
         <div className="config-form">
           <div className="form-group">
             <label>Cache TTL (Time-To-Live in seconds)</label>
@@ -139,21 +209,29 @@ function AdminConsole({ apiService, sessionManager }) {
               onChange={(e) => setCacheTTL(parseInt(e.target.value))}
               min="60"
               max="86400"
+              disabled={saving}
             />
+            <small style={{color: '#888'}}>How long responses stay cached (60s - 24hrs)</small>
           </div>
           <div className="form-group">
-            <label>Cache Max Size (MB)</label>
+            <label>Cache Max Entries</label>
             <input
               type="number"
               value={cacheMaxSize}
               onChange={(e) => setCacheMaxSize(parseInt(e.target.value))}
-              min="100"
-              max="2000"
+              min="10"
+              max="100000"
+              disabled={saving}
             />
+            <small style={{color: '#888'}}>Maximum number of cached responses (10 - 100,000)</small>
           </div>
           <div style={{ display: 'flex', gap: '1rem' }}>
-            <button className="btn-primary" onClick={handleSaveCacheConfig}>
-              💾 Save Configuration
+            <button 
+              className="btn-primary" 
+              onClick={handleSaveCacheConfig}
+              disabled={saving}
+            >
+              {saving ? '⏳ Saving...' : '💾 Save Configuration'}
             </button>
             <button className="btn-danger" onClick={handleClearCache}>
               🗑️ Clear Cache
@@ -169,9 +247,7 @@ function AdminConsole({ apiService, sessionManager }) {
           <div className="form-group">
             <label>Current Model</label>
             <select value={modelName} onChange={(e) => setModelName(e.target.value)}>
-              <option value="tinyllama-1.1b">TinyLLaMA 1.1B (Quantized)</option>
-              <option value="phi-2">Phi-2 2.7B (Quantized)</option>
-              <option value="mistral-7b-mini">Mistral 7B Mini (Quantized)</option>
+              <option value="deepseek-r1:1.5b">DeepSeek R1 1.5B</option>
             </select>
           </div>
           <button className="btn-primary" onClick={handleReloadModel}>
@@ -191,7 +267,11 @@ function AdminConsole({ apiService, sessionManager }) {
               <div key={idx} className="log-entry">
                 <span className="log-timestamp">[{log.timestamp}]</span>
                 {' '}
-                <span style={{ color: log.level === 'ERROR' ? '#ff6b6b' : '#00ff00' }}>
+                <span style={{ 
+                  color: log.level === 'ERROR' ? '#ff6b6b' : 
+                         log.level === 'INFO' ? '#4caf50' : 
+                         '#ffa726' 
+                }}>
                   [{log.level}]
                 </span>
                 {' '}
@@ -217,7 +297,9 @@ function AdminConsole({ apiService, sessionManager }) {
             </div>
             <div>
               <strong>Cache:</strong>
-              <div style={{ color: '#90ee90' }}>✓ Active</div>
+              <div style={{ color: cacheStats.entries > 0 ? '#90ee90' : '#ffa726' }}>
+                {cacheStats.entries > 0 ? '✓ Active' : '⚠ Empty'}
+              </div>
             </div>
             <div>
               <strong>Database:</strong>
