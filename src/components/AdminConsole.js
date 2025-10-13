@@ -178,7 +178,7 @@ function AdminConsole({ apiService, sessionManager, user, isGuest, onShowLogin }
         }}>
           <h2 style={{ color: '#333', marginBottom: '1rem' }}>🔒 Authentication Required</h2>
           <p style={{ color: '#666', marginBottom: '1.5rem', lineHeight: '1.6' }}>
-            The Admin Console is only available to authenticated users. 
+            The Cache Console is only available to authenticated users. 
             Please sign in with your Google account to access system monitoring, 
             cache management, and configuration settings.
           </p>
