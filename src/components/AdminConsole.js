@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-function AdminConsole({ apiService, sessionManager }) {
+function AdminConsole({ apiService, sessionManager, user, isGuest, onShowLogin }) {
   const [metrics, setMetrics] = useState({
     cpuUsage: 45,
     memoryUsage: 62,
@@ -157,6 +157,45 @@ function AdminConsole({ apiService, sessionManager }) {
   const handleReloadModel = () => {
     addLog('INFO', `Model reload requested: ${modelName}`);
   };
+
+  // Check if user is authenticated (not a guest)
+  if (isGuest || !user) {
+    return (
+      <div className="admin-container" style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '60vh',
+        textAlign: 'center'
+      }}>
+        <div style={{
+          maxWidth: '500px',
+          padding: '2rem',
+          backgroundColor: '#f9f9f9',
+          borderRadius: '8px',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
+        }}>
+          <h2 style={{ color: '#333', marginBottom: '1rem' }}>🔒 Authentication Required</h2>
+          <p style={{ color: '#666', marginBottom: '1.5rem', lineHeight: '1.6' }}>
+            The Admin Console is only available to authenticated users. 
+            Please sign in with your Google account to access system monitoring, 
+            cache management, and configuration settings.
+          </p>
+          <button 
+            className="btn-primary" 
+            onClick={onShowLogin}
+            style={{ fontSize: '1rem', padding: '0.75rem 2rem' }}
+          >
+            🔐 Sign In to Continue
+          </button>
+          <p style={{ color: '#999', fontSize: '0.85rem', marginTop: '1rem' }}>
+            Guest users have limited access to ensure system security.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="admin-container">

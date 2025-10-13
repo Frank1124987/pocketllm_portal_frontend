@@ -247,12 +247,17 @@ function App() {
           <AdminConsole 
             apiService={apiService}
             sessionManager={sessionManager}
+            user={user}
+            isGuest={isGuest}
+            onShowLogin={handleShowLogin}
           />
         )}
         {currentView === 'api' && (
           <DeveloperAPI 
             apiService={apiService}
             user={user}
+            isGuest={isGuest}
+            onShowLogin={handleShowLogin}
           />
         )}
       </main>
