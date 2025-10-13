@@ -106,7 +106,7 @@ function ChatInterface({ user, sessionManager, apiService, isGuest, onShowLogin 
       const response = await apiService.sendInferenceRequest(
         currentSessionId,
         conversationHistory,
-        { temperature: 0.7, maxTokens: 256 }
+        { temperature: 0.7, maxTokens: 1024 }
       );
 
       // Create assistant message object for display
