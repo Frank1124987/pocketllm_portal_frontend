@@ -372,16 +372,6 @@ function ChatInterface({ user, sessionManager, apiService, isGuest, onShowLogin 
                   >
                     Send
                   </button>
-                  {messages.length > 0 && (
-                    <button 
-                      type="button"
-                      className="btn-danger"
-                      onClick={handleClearHistory}
-                      disabled={loading}
-                    >
-                      Clear
-                    </button>
-                  )}
                 </div>
               </form>
             </div>

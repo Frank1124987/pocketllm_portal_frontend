@@ -1,117 +1,53 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 function DeveloperAPI({ apiService, user, isGuest, onShowLogin }) {
-  const [apiKey] = useState(`pk_${user?.userId}_${Date.now()}`);
+  const [apiKey, setApiKey] = useState('');
   const [copiedApiKey, setCopiedApiKey] = useState(false);
   const [selectedEndpoint, setSelectedEndpoint] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadApiKey = async () => {
+      if (!isGuest && user) {
+        try {
+          const token = apiService.getIdToken();
+          if (token) {
+            setApiKey(token);
+          }
+        } catch (error) {
+          console.error('Failed to get ID token:', error);
+        }
+      }
+      setLoading(false);
+    };
+    loadApiKey();
+  }, [isGuest, user]);
+
+  const backendUrl = process.env.REACT_APP_API_URL || 'https://pocketllm-backend-123456789.us-central1.run.app';
 
   const endpoints = [
     {
       method: 'POST',
-      path: '/api/v1/inference',
-      description: 'Send a prompt to the model and get a response',
+      path: '/dev/inference',
+      description: 'Direct inference for developers - No session management, no storage, just pure inference',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer {API_KEY}'
+        'Authorization': 'Bearer {YOUR_FIREBASE_ID_TOKEN}'
       },
       requestBody: {
-        prompt: 'What is machine learning?',
-        sessionId: 'sess_123456',
+        messages: [
+          { role: 'user', content: 'What is machine learning?' }
+        ],
         parameters: {
           temperature: 0.7,
-          maxTokens: 256
+          max_tokens: 256
         }
       },
       response: {
-        responseId: 'resp_123456',
         response: 'Machine learning is a subset of artificial intelligence...',
         latency: 1250,
-        isCached: false,
-        tokens: 145
-      }
-    },
-    {
-      method: 'POST',
-      path: '/api/v1/sessions',
-      description: 'Create a new chat session',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer {API_KEY}'
-      },
-      requestBody: {
-        userId: 'user_123'
-      },
-      response: {
-        sessionId: 'sess_123456',
-        userId: 'user_123',
-        createdAt: '2025-10-09T12:34:56Z'
-      }
-    },
-    {
-      method: 'GET',
-      path: '/api/v1/sessions/{sessionId}/messages',
-      description: 'Get all messages in a session',
-      headers: {
-        'Authorization': 'Bearer {API_KEY}'
-      },
-      response: {
-        sessionId: 'sess_123456',
-        messages: [
-          {
-            messageId: 'msg_1',
-            content: 'Hello',
-            type: 'USER',
-            timestamp: '2025-10-09T12:34:56Z'
-          },
-          {
-            messageId: 'msg_2',
-            content: 'Hello! How can I help?',
-            type: 'ASSISTANT',
-            timestamp: '2025-10-09T12:34:58Z'
-          }
-        ]
-      }
-    },
-    {
-      method: 'GET',
-      path: '/api/v1/health',
-      description: 'Check system health and metrics',
-      headers: {
-        'Authorization': 'Bearer {API_KEY}'
-      },
-      response: {
-        status: 'healthy',
-        uptime: 3600,
-        metrics: {
-          cpuUsage: 45.2,
-          memoryUsage: 62.1,
-          activeSessions: 5
-        }
-      }
-    },
-    {
-      method: 'DELETE',
-      path: '/api/v1/sessions/{sessionId}',
-      description: 'Delete a session and its messages',
-      headers: {
-        'Authorization': 'Bearer {API_KEY}'
-      },
-      response: {
-        success: true,
-        message: 'Session deleted successfully'
-      }
-    },
-    {
-      method: 'POST',
-      path: '/api/v1/cache/clear',
-      description: 'Clear the inference cache',
-      headers: {
-        'Authorization': 'Bearer {API_KEY}'
-      },
-      response: {
-        success: true,
-        message: 'Cache cleared',
-        entriesRemoved: 42
+        tokens: 145,
+        model: 'deepseek-r1:1.5b'
       }
     }
   ];
@@ -167,35 +103,56 @@ function DeveloperAPI({ apiService, user, isGuest, onShowLogin }) {
 
       {/* API Key Section */}
       <div className="api-section">
-        <h2 className="api-section-title">🔑 Your API Key</h2>
-        <p>Use this key to authenticate API requests. Keep it secure!</p>
-        <div className="api-key-box">
-          <code>{apiKey}</code>
-          <button 
-            className={copiedApiKey ? 'btn-secondary' : 'btn-primary'}
-            onClick={handleCopyApiKey}
-          >
-            {copiedApiKey ? '✓ Copied' : 'Copy'}
-          </button>
+        <h2 className="api-section-title">🔑 Your Firebase ID Token</h2>
+        <p>This is your Firebase authentication token. Use it to authenticate API requests.</p>
+        {loading ? (
+          <div style={{ padding: '1rem', textAlign: 'center' }}>
+            <p>Loading token...</p>
+          </div>
+        ) : (
+          <div className="api-key-box">
+            <code style={{ fontSize: '0.75rem', wordBreak: 'break-all' }}>{apiKey}</code>
+            <button 
+              className={copiedApiKey ? 'btn-secondary' : 'btn-primary'}
+              onClick={handleCopyApiKey}
+            >
+              {copiedApiKey ? '✓ Copied' : 'Copy'}
+            </button>
+          </div>
+        )}
+        <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#fff3cd', borderRadius: '4px', fontSize: '0.85rem' }}>
+          <strong>⚠️ Security Notice:</strong>
+          <ul style={{ marginTop: '0.5rem', marginBottom: 0, paddingLeft: '1.5rem' }}>
+            <li>This token expires after 1 hour</li>
+            <li>Never share your token publicly or commit it to version control</li>
+            <li>The app automatically refreshes this token for you</li>
+            <li>If compromised, simply log out and log back in to get a new token</li>
+          </ul>
         </div>
       </div>
 
       {/* Authentication Section */}
       <div className="api-section">
         <h2 className="api-section-title">🔐 Authentication</h2>
-        <p>Include your API key in the Authorization header:</p>
+        <p>Your Firebase ID Token is used for authentication. Include it in the Authorization header:</p>
         <div className="code-block">
-          {`curl -H "Authorization: Bearer ${apiKey}" \\
-  https://pocketllm.local/api/v1/health`}
+          {`curl -H "Authorization: Bearer ${apiKey.substring(0, 50)}..." \\
+  ${backendUrl}`}
         </div>
+        <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '1rem' }}>
+          <strong>Note:</strong> This is your Firebase ID token. It expires after 1 hour and is automatically refreshed by the app.
+        </p>
       </div>
 
       {/* Base URL Section */}
       <div className="api-section">
         <h2 className="api-section-title">📍 Base URL</h2>
         <div className="code-block">
-          https://pocketllm.local/api/v1
+          {backendUrl}
         </div>
+        <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.5rem' }}>
+          Production backend endpoint for PocketLLM
+        </p>
       </div>
 
       {/* Endpoints Section */}
@@ -257,25 +214,6 @@ function DeveloperAPI({ apiService, user, isGuest, onShowLogin }) {
         </div>
       </div>
 
-      {/* Rate Limiting Section */}
-      <div className="api-section">
-        <h2 className="api-section-title">⏱️ Rate Limiting</h2>
-        <div className="config-form">
-          <ul>
-            <li><strong>Requests per minute:</strong> 60</li>
-            <li><strong>Requests per hour:</strong> 1,000</li>
-            <li><strong>Burst limit:</strong> 10 requests</li>
-          </ul>
-          <p style={{ fontSize: '0.9rem', color: '#666' }}>
-            Rate limit status is included in response headers:
-          </p>
-          <div className="code-block">
-            {`X-RateLimit-Limit: 1000
-X-RateLimit-Remaining: 999
-X-RateLimit-Reset: 1633788896`}
-          </div>
-        </div>
-      </div>
 
       {/* Error Codes Section */}
       <div className="api-section">
@@ -324,66 +262,40 @@ X-RateLimit-Reset: 1633788896`}
       <div className="api-section">
         <h2 className="api-section-title">💻 Example Code</h2>
         
-        <h3 style={{ marginTop: '1.5rem' }}>Python</h3>
+        <h3 style={{ marginTop: '1.5rem' }}>Python - Direct Inference (Recommended for Developers)</h3>
         <div className="code-block">
-{`import requests
+{`import requests 
 
-API_KEY = "${apiKey}"
-BASE_URL = "https://pocketllm.local/api/v1"
+# Your Firebase ID Token (get from Developer API page)
+FIREBASE_TOKEN = "${apiKey ? apiKey.substring(0, 50) + '...' : 'your_token_here'}"
+BASE_URL = "${backendUrl}"
 
 headers = {
-    "Authorization": f"Bearer {API_KEY}",
+    "Authorization": f"Bearer {FIREBASE_TOKEN}",
     "Content-Type": "application/json"
 }
 
-# Create a session
-session_data = requests.post(
-    f"{BASE_URL}/sessions",
-    json={"userId": "user_123"},
-    headers=headers
-).json()
-
-session_id = session_data["sessionId"]
-
-# Send inference request
+# Direct inference - No session management needed
 response = requests.post(
-    f"{BASE_URL}/inference",
+    f"{BASE_URL}/dev/inference",
     json={
-        "prompt": "What is AI?",
-        "sessionId": session_id,
-        "parameters": {"temperature": 0.7, "maxTokens": 256}
+        "messages": [
+            {"role": "user", "content": "What is machine learning?"}
+        ],
+        "parameters": {
+            "temperature": 0.7,
+            "max_tokens": 256
+        }
     },
     headers=headers
 ).json()
 
-print(response["response"])`}
+print(response["response"])
+print(f"Latency: {response['latency']}ms")
+print(f"Model: {response['model']}")`}
         </div>
 
-        <h3 style={{ marginTop: '1.5rem' }}>JavaScript/Node.js</h3>
-        <div className="code-block">
-{`const API_KEY = "${apiKey}";
-const BASE_URL = "https://pocketllm.local/api/v1";
 
-async function sendMessage(prompt, sessionId) {
-  const response = await fetch(\`\${BASE_URL}/inference\`, {
-    method: "POST",
-    headers: {
-      "Authorization": \`Bearer \${API_KEY}\`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      prompt: prompt,
-      sessionId: sessionId,
-      parameters: { temperature: 0.7, maxTokens: 256 }
-    })
-  });
-
-  return await response.json();
-}
-
-const result = await sendMessage("Hello, how are you?", "sess_123");
-console.log(result.response);`}
-        </div>
       </div>
     </div>
   );

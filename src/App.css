@@ -491,6 +491,7 @@
 }
 
 .code-block {
+  white-space: pre-wrap;
   background: #282c34;
   color: #abb2bf;
   padding: 1rem;
