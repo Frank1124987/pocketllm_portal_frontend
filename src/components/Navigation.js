@@ -21,7 +21,7 @@ function Navigation({ currentView, onViewChange, user, onLogout, isGuest, onShow
             className={currentView === 'admin' ? 'active' : ''}
             onClick={() => onViewChange('admin')}
           >
-            ⚙️ Admin
+            ⚙️ Cache
           </button>
         </li>
         <li>

@@ -161,7 +161,7 @@ function AdminConsole({ apiService, sessionManager }) {
   return (
     <div className="admin-container">
       <div className="admin-header">
-        <h1 className="admin-title">⚙️ Admin Console</h1>
+        <h1 className="admin-title">⚙️ Cache Console</h1>
         <button 
           className={autoRefresh ? 'btn-primary' : 'btn-secondary'}
           onClick={() => setAutoRefresh(!autoRefresh)}

@@ -335,9 +335,6 @@ function ChatInterface({ user, sessionManager, apiService, isGuest, onShowLogin 
                 <div key={msg.messageId} className={`message ${msg.type.toLowerCase()}`}>
                   <div className="message-content">
                     {msg.content}
-                    {msg.isCached && (
-                      <span className="message-badge">⚡ Cached</span>
-                    )}
                   </div>
                 </div>
               ))
