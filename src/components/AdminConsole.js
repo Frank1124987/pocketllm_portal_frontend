@@ -295,31 +295,31 @@ function AdminConsole({ apiService, sessionManager, user, isGuest, onShowLogin }
         </div>
       </div>
 
-      {/* System Logs */}
-      <div className="admin-section">
-        <h2 className="section-title">📝 System Logs</h2>
-        <div className="log-viewer">
-          {logs.length === 0 ? (
-            <div className="log-entry">No logs available</div>
-          ) : (
-            logs.map((log, idx) => (
-              <div key={idx} className="log-entry">
-                <span className="log-timestamp">[{log.timestamp}]</span>
-                {' '}
-                <span style={{ 
-                  color: log.level === 'ERROR' ? '#ff6b6b' : 
-                         log.level === 'INFO' ? '#4caf50' : 
-                         '#ffa726' 
-                }}>
-                  [{log.level}]
-                </span>
-                {' '}
-                {log.message}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+      // {/* System Logs */}
+      // <div className="admin-section">
+      //   <h2 className="section-title">📝 System Logs</h2>
+      //   <div className="log-viewer">
+      //     {logs.length === 0 ? (
+      //       <div className="log-entry">No logs available</div>
+      //     ) : (
+      //       logs.map((log, idx) => (
+      //         <div key={idx} className="log-entry">
+      //           <span className="log-timestamp">[{log.timestamp}]</span>
+      //           {' '}
+      //           <span style={{ 
+      //             color: log.level === 'ERROR' ? '#ff6b6b' : 
+      //                    log.level === 'INFO' ? '#4caf50' : 
+      //                    '#ffa726' 
+      //           }}>
+      //             [{log.level}]
+      //           </span>
+      //           {' '}
+      //           {log.message}
+      //         </div>
+      //       ))
+      //     )}
+      //   </div>
+      // </div>
 
       {/* Health Status */}
       <div className="admin-section">
